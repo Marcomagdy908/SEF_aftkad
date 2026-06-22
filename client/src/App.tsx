@@ -36,7 +36,6 @@ const initialMockData: DBState = {
     {
       id: 'u1',
       name: 'يوسف كرم',
-      email: '',
       phone: '01229683182',
       department: 'General',
       memberId: 'MEM-1007',
@@ -85,7 +84,6 @@ function App() {
   // User Form State
   const [userForm, setUserForm] = useState({
     name: '',
-    email: '',
     phone: '',
     department: '',
     memberId: '',
@@ -295,7 +293,6 @@ function App() {
 
     const newProfile: Omit<UserProfile, 'id'> = {
       name: userForm.name,
-      email: userForm.email || 'N/A',
       phone: userForm.phone || 'N/A',
       department: userForm.department || 'General',
       memberId: userForm.memberId || `MEM-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -317,7 +314,6 @@ function App() {
         await push(ref(rtdb, 'users'), newProfile);
         setUserForm({
           name: '',
-          email: '',
           phone: '',
           department: '',
           memberId: '',
@@ -347,7 +343,6 @@ function App() {
 
     setUserForm({
       name: '',
-      email: '',
       phone: '',
       department: '',
       memberId: '',
@@ -430,7 +425,6 @@ function App() {
 
         const headers = data[0].map(h => String(h).toLowerCase().trim());
         const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('اسم') || h.includes('الإسم'));
-        const emailIdx = headers.findIndex(h => h.includes('email') || h.includes('ايميل') || h.includes('البريد'));
         const phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('tel') || h.includes('تليفون') || h.includes('هاتف') || h.includes('التليفون') || h.includes('رقم'));
         const deptIdx = headers.findIndex(h => h.includes('dept') || h.includes('role') || h.includes('division') || h.includes('فرقة') || h.includes('كلية') || h.includes('قسم') || h.includes('سنة'));
         const idIdx = headers.findIndex(h => h.includes('id') || h.includes('code') || h.includes('member') || h.includes('كود') || h.includes('مسلسل'));
@@ -469,7 +463,6 @@ function App() {
           parsedProfiles.push({
             id: `temp_${i}_${Date.now()}`,
             name: String(row[nameIdx]).trim(),
-            email: emailIdx !== -1 && row[emailIdx] ? String(row[emailIdx]).trim() : '',
             phone: phoneIdx !== -1 && row[phoneIdx] ? String(row[phoneIdx]).trim() : 'N/A',
             department: deptIdx !== -1 && row[deptIdx] ? String(row[deptIdx]).trim() : 'General',
             memberId: idIdx !== -1 && row[idIdx] ? String(row[idIdx]).trim() : `MEM-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -503,7 +496,6 @@ function App() {
         for (const user of importedUsersPreview) {
           const newProfile = {
             name: user.name,
-            email: user.email || 'N/A',
             phone: user.phone || 'N/A',
             department: user.department || 'General',
             memberId: user.memberId || `MEM-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -667,7 +659,6 @@ function App() {
   // Filtered users list based on search and selected filters
   const filteredUsers = users.filter(u => {
     const matchesSearch = u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       u.department.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       u.memberId.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       (u.role && u.role.toLowerCase().includes(userSearchQuery.toLowerCase()));

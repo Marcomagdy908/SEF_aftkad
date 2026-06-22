@@ -72,7 +72,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
             type="text" 
             className="form-control" 
             style={{ paddingLeft: '40px' }}
-            placeholder="Search users by name, email, department or ID..." 
+            placeholder="Search users by name, department or ID..." 
             value={userSearchQuery}
             onChange={(e) => setUserSearchQuery(e.target.value)}
           />

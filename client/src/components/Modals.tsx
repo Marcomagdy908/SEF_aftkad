@@ -8,7 +8,6 @@ import type { UserProfile } from '../types';
 interface AddUserModalProps {
   userForm: {
     name: string;
-    email: string;
     phone: string;
     department: string;
     memberId: string;
@@ -54,17 +53,6 @@ export const AddUserModal: React.FC<AddUserModalProps> = ({
                 onChange={(e) => setUserForm({ ...userForm, name: e.target.value })} 
                 placeholder="John Doe"
                 required 
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label" htmlFor="userEmail">Email Address</label>
-              <input 
-                id="userEmail"
-                type="email" 
-                className="form-control" 
-                value={userForm.email} 
-                onChange={(e) => setUserForm({ ...userForm, email: e.target.value })} 
-                placeholder="john@example.com"
               />
             </div>
             <div className="form-group">
@@ -352,7 +340,6 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
               <thead>
                 <tr>
                   <th>Name</th>
-                  <th>Email</th>
                   <th>Department</th>
                   <th>Role (الدور)</th>
                 </tr>
@@ -361,7 +348,6 @@ export const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                 {importedUsersPreview.map((user, index) => (
                   <tr key={index}>
                     <td>{user.name}</td>
-                    <td>{user.email || 'N/A'}</td>
                     <td>{user.department}</td>
                     <td>
                       <select 
@@ -454,15 +440,6 @@ export const UserDetailsModal: React.FC<UserDetailsModalProps> = ({
                     className="form-control" 
                     value={editForm.phone} 
                     onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })} 
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">البريد الإلكتروني (Email)</label>
-                  <input 
-                    type="email" 
-                    className="form-control" 
-                    value={editForm.email} 
-                    onChange={(e) => setEditForm({ ...editForm, email: e.target.value })} 
                   />
                 </div>
                 <div className="form-group">
@@ -595,7 +572,6 @@ export const UserDetailsModal: React.FC<UserDetailsModalProps> = ({
                 <div><strong>العنوان:</strong> {viewingUser.address || 'N/A'}</div>
                 <div><strong>المواهب والهوايات:</strong> {viewingUser.hobbies || 'N/A'}</div>
                 <div><strong>قسم - السنة:</strong> {viewingUser.deptYear || 'N/A'}</div>
-                <div><strong>البريد الإلكتروني:</strong> {viewingUser.email || 'N/A'}</div>
                 <div><strong>الدور:</strong> {viewingUser.role || 'مخدوم'}</div>
               </div>
             )}
