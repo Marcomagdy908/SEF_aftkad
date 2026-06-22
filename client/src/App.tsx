@@ -7,7 +7,6 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  createUserWithEmailAndPassword
 } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
 import {
@@ -138,26 +137,10 @@ function App() {
     setAuthError('');
     setAuthLoading(true);
 
-    const adminEmail = import.meta.env.VITE_ADMIN_EMAIL as string;
-    const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD as string;
-
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (err: any) {
-      // Auto-create the admin account on first login if it doesn't exist yet
-      if (
-        (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') &&
-        email === adminEmail &&
-        password === adminPassword
-      ) {
-        try {
-          await createUserWithEmailAndPassword(auth, email, password);
-        } catch (createErr: any) {
-          setAuthError(createErr.message || 'Failed to create admin account on Firebase.');
-        }
-      } else {
-        setAuthError(err.message || 'Failed to sign in. Please check your credentials.');
-      }
+      setAuthError(err.message || 'Failed to sign in. Please check your credentials.');
     } finally {
       setAuthLoading(false);
     }

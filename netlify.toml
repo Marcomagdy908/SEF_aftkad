@@ -2,3 +2,8 @@
   base = "client"
   command = "npm run build"
   publish = "dist"
+
+# Firebase client-side config keys are public by design — access is controlled
+# by Firebase Security Rules and authorized domains, not by key secrecy.
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "VITE_FIREBASE_API_KEY,VITE_FIREBASE_AUTH_DOMAIN,VITE_FIREBASE_PROJECT_ID,VITE_FIREBASE_STORAGE_BUCKET,VITE_FIREBASE_MESSAGING_SENDER_ID,VITE_FIREBASE_APP_ID"
