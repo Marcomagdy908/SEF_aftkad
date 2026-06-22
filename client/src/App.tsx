@@ -1,21 +1,21 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Menu } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { auth, rtdb, isMockMode } from './firebase';
-import { 
-  signInWithEmailAndPassword, 
-  signOut, 
+import {
+  signInWithEmailAndPassword,
+  signOut,
   onAuthStateChanged,
   createUserWithEmailAndPassword
 } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { 
-  ref, 
-  push, 
-  set, 
-  onValue, 
-  remove 
+import {
+  ref,
+  push,
+  set,
+  onValue,
+  remove
 } from 'firebase/database';
 
 // Types
@@ -52,7 +52,7 @@ const initialMockData: DBState = {
       hobbies: 'الالحان',
       deptYear: 'اتصالات '
     }
-   
+
   ],
   events: [
     { id: 'e1', name: 'الاجتماع العام للخدمة', date: '2026-06-25', description: 'اجتماع خدمة الافتقاد الأسبوعي للوقوف على أحوال المخدومين.' }
@@ -81,7 +81,7 @@ function App() {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showAddEventModal, setShowAddEventModal] = useState(false);
   const [showImportPreviewModal, setShowImportPreviewModal] = useState(false);
-  
+
   // User Form State
   const [userForm, setUserForm] = useState({
     name: '',
@@ -109,7 +109,8 @@ function App() {
   const [selectedCollege, setSelectedCollege] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
-  
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   // Imported data state
   const [importedUsersPreview, setImportedUsersPreview] = useState<UserProfile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -420,7 +421,7 @@ function App() {
         const wsname = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[wsname];
         const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-        
+
         // Extract headers
         if (data.length <= 1) {
           alert('Excel file seems to be empty or lacks headers.');
@@ -624,26 +625,17 @@ function App() {
     }
 
     const currentRecord = attendance[selectedEventId] || {};
-    
+
     // Prepare data
     const exportData = users.map(user => {
-      const status = currentRecord[user.id] || 'Not Marked';
+      const status = currentRecord[user.id] || 'Absent';
       return {
-        'Member ID': user.memberId,
         'Name': user.name,
-        'Email': user.email,
         'Phone': user.phone,
-        'Department': user.department,
         'الفرقة': user.classYear || '',
         'الكلية': user.college || '',
-        'السكشن': user.section || '',
         'الخادم المسئول': user.servant1 || '',
         'الخادم المسئول2': user.servant2 || '',
-        'الكنيسة الاصلية': user.originalChurch || '',
-        'بيخدم في ايه': user.serviceType || '',
-        'العنوان': user.address || '',
-        'المواهب والهوايات': user.hobbies || '',
-        'قسم - السنة': user.deptYear || '',
         'Attendance Status': status
       };
     });
@@ -651,7 +643,7 @@ function App() {
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
     Xpath: XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
-    
+
     // Write and trigger download
     XLSX.writeFile(workbook, `${currentEvent.name.replace(/\s+/g, '_')}_Attendance_${currentEvent.date}.xlsx`);
   };
@@ -659,7 +651,7 @@ function App() {
   // Helper Stats calculations
   const totalUsersCount = users.length;
   const totalEventsCount = events.length;
-  
+
   const currentEventAttendance = selectedEventId ? attendance[selectedEventId] || {} : {};
   const currentEventPresent = Object.values(currentEventAttendance).filter(v => v === 'Present').length;
   const currentEventAbsent = totalUsersCount - currentEventPresent;
@@ -674,7 +666,7 @@ function App() {
 
   // Filtered users list based on search and selected filters
   const filteredUsers = users.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) || 
+    const matchesSearch = u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       u.department.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       u.memberId.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
@@ -690,7 +682,7 @@ function App() {
   // Non-logged-in View: Login screen
   if (!currentUser) {
     return (
-      <LoginView 
+      <LoginView
         email={email}
         setEmail={setEmail}
         password={password}
@@ -707,16 +699,25 @@ function App() {
   return (
     <div className="app-container">
       {/* Sidebar navigation */}
-      <Sidebar 
+      <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         currentUser={currentUser}
         handleLogout={handleLogout}
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
       />
 
       {/* Main dashboard content workspace */}
       <main className="main-content">
-        
+
+        <div className="mobile-header">
+          <button className="burger-btn" onClick={() => setIsSidebarOpen(true)} aria-label="Open menu">
+            <Menu size={24} />
+          </button>
+          <span className="mobile-logo-text">SEF_Aftkad</span>
+        </div>
+
         {isMockMode && (
           <div className="alert-banner alert-banner-info">
             <AlertTriangle size={20} />
@@ -726,7 +727,7 @@ function App() {
 
         {/* Dashboard View */}
         {activeTab === 'dashboard' && (
-          <DashboardView 
+          <DashboardView
             totalUsersCount={totalUsersCount}
             totalEventsCount={totalEventsCount}
             currentEventPresent={currentEventPresent}
@@ -747,7 +748,7 @@ function App() {
 
         {/* Users View */}
         {activeTab === 'users' && (
-          <UsersView 
+          <UsersView
             users={users}
             userSearchQuery={userSearchQuery}
             setUserSearchQuery={setUserSearchQuery}
@@ -768,7 +769,7 @@ function App() {
 
         {/* Events View */}
         {activeTab === 'events' && (
-          <EventsView 
+          <EventsView
             events={events}
             setSelectedEventId={setSelectedEventId}
             setActiveTab={setActiveTab}
@@ -778,7 +779,7 @@ function App() {
 
         {/* Attendance View */}
         {activeTab === 'attendance' && (
-          <AttendanceView 
+          <AttendanceView
             events={events}
             selectedEventId={selectedEventId}
             setSelectedEventId={setSelectedEventId}
@@ -795,7 +796,7 @@ function App() {
 
       {/* Add User Modal */}
       {showAddUserModal && (
-        <AddUserModal 
+        <AddUserModal
           userForm={userForm}
           setUserForm={setUserForm}
           handleAddUser={handleAddUser}
@@ -805,7 +806,7 @@ function App() {
 
       {/* Add Event Modal */}
       {showAddEventModal && (
-        <AddEventModal 
+        <AddEventModal
           eventForm={eventForm}
           setEventForm={setEventForm}
           handleAddEvent={handleAddEvent}
@@ -815,7 +816,7 @@ function App() {
 
       {/* Excel Import Preview Modal */}
       {showImportPreviewModal && (
-        <ImportPreviewModal 
+        <ImportPreviewModal
           importedUsersPreview={importedUsersPreview}
           setImportedUsersPreview={setImportedUsersPreview}
           handleConfirmImport={handleConfirmImport}
@@ -825,7 +826,7 @@ function App() {
 
       {/* View User Details Modal */}
       {viewingUser && (
-        <UserDetailsModal 
+        <UserDetailsModal
           viewingUser={viewingUser}
           setViewingUser={setViewingUser}
           handleUpdateUser={handleUpdateUser}

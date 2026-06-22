@@ -139,7 +139,7 @@ export const UsersView: React.FC<UsersViewProps> = ({
             {filteredUsers.length > 0 ? (
               filteredUsers.map(user => (
                 <tr key={user.id}>
-                  <td>{user.name}</td>
+                  <td style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{user.name}</td>
                   <td>{user.college || 'N/A'}</td>
                   <td>{user.phone}</td>
                   <td>

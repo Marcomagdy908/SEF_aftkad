@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Lock, HeartHandshake, AlertTriangle } from 'lucide-react';
+import { User, Lock, AlertTriangle } from 'lucide-react';
 
 interface LoginViewProps {
   email: string;
@@ -26,9 +26,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
     <div className="login-container">
       <div className="login-card">
         <div className="login-logo">
-          <HeartHandshake size={48} strokeWidth={2.5} />
+          <img src="/logo.jpg" alt="SEF_Logo" style={{ width: '120px', height: '120px'}} />
         </div>
-        <h2 className="login-title">Admin Dashboard</h2>
+        <h2 className="login-title">SEF_Aftkad_App</h2>
         <p className="login-subtitle">Sign in to manage attendees, events, and track attendance</p>
 
         {isMockMode && (
