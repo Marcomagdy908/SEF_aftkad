@@ -28,8 +28,4 @@ export interface AttendanceRecord {
   [userId: string]: 'Present' | 'Absent' | undefined;
 }
 
-export interface DBState {
-  users: UserProfile[];
-  events: EventItem[];
-  attendance: { [eventId: string]: AttendanceRecord };
-}
+

@@ -12,12 +12,7 @@ const firebaseConfig = {
   databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || `https://${import.meta.env.VITE_FIREBASE_PROJECT_ID}-default-rtdb.firebaseio.com`,
 };
 
-// Check if we have configuration (Mock mode disabled)
-export const isMockMode = false;
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-const app = !isMockMode
-  ? (getApps().length ? getApp() : initializeApp(firebaseConfig))
-  : null;
-
-export const auth = app ? getAuth(app) : null;
-export const rtdb = app ? getDatabase(app) : null;
+export const auth = getAuth(app);
+export const rtdb = getDatabase(app);

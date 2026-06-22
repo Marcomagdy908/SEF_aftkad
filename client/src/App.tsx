@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import type { ChangeEvent } from 'react';
-import { AlertTriangle, Menu } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { auth, rtdb, isMockMode } from './firebase';
+import { auth, rtdb } from './firebase';
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -19,7 +19,7 @@ import {
 } from 'firebase/database';
 
 // Types
-import type { UserProfile, EventItem, AttendanceRecord, DBState } from './types';
+import type { UserProfile, EventItem, AttendanceRecord } from './types';
 
 // Components
 import { LoginView } from './components/LoginView';
@@ -30,47 +30,16 @@ import { EventsView } from './components/EventsView';
 import { AttendanceView } from './components/AttendanceView';
 import { AddUserModal, AddEventModal, ImportPreviewModal, UserDetailsModal } from './components/Modals';
 
-// Initial mock data if firebase is not configured
-const initialMockData: DBState = {
-  users: [
-    {
-      id: 'u1',
-      name: 'يوسف كرم',
-      phone: '01229683182',
-      department: 'General',
-      memberId: 'MEM-1007',
-      role: 'مخدوم',
-      classYear: 'ثانية',
-      college: 'هندسة',
-      section: '',
-      servant1: 'ماركو مجدي',
-      servant2: '',
-      originalChurch: 'ابو سيفين و الانبا رويس',
-      serviceType: 'مدرسة الالحان و بيروح اعداد خدام',
-      address: 'حدائق المعادي',
-      hobbies: 'الالحان',
-      deptYear: 'اتصالات '
-    }
-
-  ],
-  events: [
-    { id: 'e1', name: 'الاجتماع العام للخدمة', date: '2026-06-25', description: 'اجتماع خدمة الافتقاد الأسبوعي للوقوف على أحوال المخدومين.' }
-  ],
-  attendance: {
-    'e1': { 'u1': 'Present' }
-  }
-};
-
 function App() {
   // Navigation & Auth
   const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'events' | 'attendance'>('dashboard');
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | { email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
 
-  // App Data State (Synchronized either from Firestore or LocalStorage mock)
+  // App Data State
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [attendance, setAttendance] = useState<{ [eventId: string]: AttendanceRecord }>({});
@@ -100,149 +69,68 @@ function App() {
     deptYear: ''
   });
   const [viewingUser, setViewingUser] = useState<UserProfile | null>(null);
+
   // Event Form State
   const [eventForm, setEventForm] = useState({ name: '', date: '', description: '' });
-  // Search state
+
+  // Search / Filter State
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [selectedCollege, setSelectedCollege] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Imported data state
+  // Excel Import State
   const [importedUsersPreview, setImportedUsersPreview] = useState<UserProfile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load Auth State
+  // Auth State Listener
   useEffect(() => {
-    if (auth) {
-      // Firebase is available — always use it as the source of truth.
-      // Clear any stale localStorage bypass that would skip Firebase Auth.
-      localStorage.removeItem('real_admin_user');
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        setCurrentUser(user);
-      });
-      return unsubscribe;
-    } else {
-      // Firebase not configured — restore the offline bypass session if it exists
-      const savedAdminUser = localStorage.getItem('real_admin_user');
-      if (savedAdminUser) {
-        setCurrentUser(JSON.parse(savedAdminUser));
-      }
-    }
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return unsubscribe;
   }, []);
 
-  // Load local mock fallback data
-  const loadLocalMockData = () => {
-    const savedData = localStorage.getItem('attendance_tracker_mock_db');
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData) as DBState;
-        setUsers(parsed.users || []);
-        setEvents(parsed.events || []);
-        setAttendance(parsed.attendance || {});
-        if (parsed.events && parsed.events.length > 0) {
-          setSelectedEventId(parsed.events[0].id);
-        }
-      } catch (e) {
-        setUsers(initialMockData.users);
-        setEvents(initialMockData.events);
-        setAttendance(initialMockData.attendance);
-        setSelectedEventId(initialMockData.events[0].id);
-      }
-    } else {
-      setUsers(initialMockData.users);
-      setEvents(initialMockData.events);
-      setAttendance(initialMockData.attendance);
-      setSelectedEventId(initialMockData.events[0].id);
-    }
-  };
-
-  // Load / Sync Data State
+  // Realtime Database Listeners
   useEffect(() => {
     if (!currentUser) return;
 
-    if (isMockMode) {
-      loadLocalMockData();
-    } else if (rtdb) {
-      // Firebase Live mode using Realtime Database listeners
-      const usersRef = ref(rtdb, 'users');
-      const unsubscribeUsers = onValue(usersRef, (snapshot) => {
-        const val = snapshot.val();
-        if (!val) {
-          // Seed RTDB automatically on first run
-          initialMockData.users.forEach(async (user) => {
-            const { id, ...profile } = user;
-            try {
-              await set(ref(rtdb!, `users/${id}`), profile);
-            } catch (err) {
-              console.warn("Failed to seed initial user to RTDB:", err);
-            }
-          });
-        }
-        const uList: UserProfile[] = [];
-        if (val) {
-          Object.keys(val).forEach((key) => {
-            uList.push({ id: key, ...val[key] } as UserProfile);
-          });
-        }
-        setUsers(uList);
-      }, (error) => {
-        console.error("RTDB user sync failed, using local fallback:", error);
-        loadLocalMockData();
-      });
+    const unsubscribeUsers = onValue(ref(rtdb, 'users'), (snapshot) => {
+      const val = snapshot.val();
+      const uList: UserProfile[] = val
+        ? Object.keys(val).map((key) => ({ id: key, ...val[key] } as UserProfile))
+        : [];
+      setUsers(uList);
+    }, (error) => {
+      console.error('RTDB users sync error:', error);
+    });
 
-      const eventsRef = ref(rtdb, 'events');
-      const unsubscribeEvents = onValue(eventsRef, (snapshot) => {
-        const val = snapshot.val();
-        if (!val) {
-          // Seed RTDB events automatically on first run
-          initialMockData.events.forEach(async (event) => {
-            const { id, ...evt } = event;
-            try {
-              await set(ref(rtdb!, `events/${id}`), evt);
-            } catch (err) {
-              console.warn("Failed to seed initial event to RTDB:", err);
-            }
-          });
-        }
-        const eList: EventItem[] = [];
-        if (val) {
-          Object.keys(val).forEach((key) => {
-            eList.push({ id: key, ...val[key] } as EventItem);
-          });
-        }
-        setEvents(eList);
-        if (eList.length > 0 && !selectedEventId) {
-          setSelectedEventId(eList[0].id);
-        }
-      }, (error) => {
-        console.error("RTDB events sync failed:", error);
-      });
+    const unsubscribeEvents = onValue(ref(rtdb, 'events'), (snapshot) => {
+      const val = snapshot.val();
+      const eList: EventItem[] = val
+        ? Object.keys(val).map((key) => ({ id: key, ...val[key] } as EventItem))
+        : [];
+      setEvents(eList);
+      if (eList.length > 0 && !selectedEventId) {
+        setSelectedEventId(eList[0].id);
+      }
+    }, (error) => {
+      console.error('RTDB events sync error:', error);
+    });
 
-      const attendanceRef = ref(rtdb, 'attendance');
-      const unsubscribeAttendance = onValue(attendanceRef, (snapshot) => {
-        const val = snapshot.val() || {};
-        setAttendance(val);
-      }, (error) => {
-        console.error("RTDB attendance sync failed:", error);
-      });
+    const unsubscribeAttendance = onValue(ref(rtdb, 'attendance'), (snapshot) => {
+      setAttendance(snapshot.val() || {});
+    }, (error) => {
+      console.error('RTDB attendance sync error:', error);
+    });
 
-      return () => {
-        unsubscribeUsers();
-        unsubscribeEvents();
-        unsubscribeAttendance();
-      };
-    }
+    return () => {
+      unsubscribeUsers();
+      unsubscribeEvents();
+      unsubscribeAttendance();
+    };
   }, [currentUser]);
-
-  // Helper to persist data updates (Mock only)
-  const saveMockDB = (newUsers: UserProfile[], newEvents: EventItem[], newAttendance: { [eventId: string]: AttendanceRecord }) => {
-    if (isMockMode) {
-      const data: DBState = { users: newUsers, events: newEvents, attendance: newAttendance };
-      localStorage.setItem('attendance_tracker_mock_db', JSON.stringify(data));
-    }
-  };
 
   // Auth Functions
   const handleLogin = async (e: React.FormEvent) => {
@@ -250,50 +138,43 @@ function App() {
     setAuthError('');
     setAuthLoading(true);
 
-    if (auth) {
-      // Always try Firebase Auth first so auth.currentUser is set (required for RTDB writes)
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-      } catch (err: any) {
-        // If the admin user doesn't exist yet, create it automatically
-        if (
-          (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') &&
-          email === 'admin@gmail.com' &&
-          password === 'password123'
-        ) {
-          try {
-            await createUserWithEmailAndPassword(auth, email, password);
-          } catch (createErr: any) {
-            setAuthError(createErr.message || 'Failed to create admin account on Firebase.');
-          }
-        } else {
-          setAuthError(err.message || 'Failed to sign in. Please check your credentials.');
+    const adminEmail = import.meta.env.VITE_ADMIN_EMAIL as string;
+    const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD as string;
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (err: any) {
+      // Auto-create the admin account on first login if it doesn't exist yet
+      if (
+        (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') &&
+        email === adminEmail &&
+        password === adminPassword
+      ) {
+        try {
+          await createUserWithEmailAndPassword(auth, email, password);
+        } catch (createErr: any) {
+          setAuthError(createErr.message || 'Failed to create admin account on Firebase.');
         }
-      } finally {
-        setAuthLoading(false);
-      }
-    } else {
-      // Firebase not configured — use local offline bypass only in mock mode
-      if (email === 'admin@gmail.com' && password === 'password123') {
-        const adminUser = { email: 'admin@gmail.com' };
-        localStorage.setItem('real_admin_user', JSON.stringify(adminUser));
-        setCurrentUser(adminUser);
       } else {
-        setAuthError('Authentication service is not available.');
+        setAuthError(err.message || 'Failed to sign in. Please check your credentials.');
       }
+    } finally {
       setAuthLoading(false);
     }
   };
 
   const handleLogout = async () => {
-    localStorage.removeItem('real_admin_user');
-    if (auth) {
-      await signOut(auth);
-    }
+    await signOut(auth);
     setCurrentUser(null);
   };
 
   // User Actions
+  const resetUserForm = () => setUserForm({
+    name: '', phone: '', department: '', memberId: '', role: 'مخدوم',
+    classYear: '', college: '', section: '', servant1: '', servant2: '',
+    originalChurch: '', serviceType: '', address: '', hobbies: '', deptYear: ''
+  });
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userForm.name) return;
@@ -316,101 +197,38 @@ function App() {
       deptYear: userForm.deptYear || ''
     };
 
-    if (rtdb) {
-      try {
-        await push(ref(rtdb, 'users'), newProfile);
-        setUserForm({
-          name: '',
-          phone: '',
-          department: '',
-          memberId: '',
-          role: 'مخدوم',
-          classYear: '',
-          college: '',
-          section: '',
-          servant1: '',
-          servant2: '',
-          originalChurch: '',
-          serviceType: '',
-          address: '',
-          hobbies: '',
-          deptYear: ''
-        });
-        setShowAddUserModal(false);
-        return;
-      } catch (err) {
-        console.warn("RTDB push user failed, using local storage fallback:", err);
-      }
+    try {
+      await push(ref(rtdb, 'users'), newProfile);
+      resetUserForm();
+      setShowAddUserModal(false);
+    } catch (err) {
+      console.error('Failed to add user:', err);
+      alert('Failed to save user. Please try again.');
     }
-
-    const newUser: UserProfile = { id: `u_${Date.now()}`, ...newProfile };
-    const updatedUsers = [...users, newUser];
-    setUsers(updatedUsers);
-    saveMockDB(updatedUsers, events, attendance);
-
-    setUserForm({
-      name: '',
-      phone: '',
-      department: '',
-      memberId: '',
-      role: 'مخدوم',
-      classYear: '',
-      college: '',
-      section: '',
-      servant1: '',
-      servant2: '',
-      originalChurch: '',
-      serviceType: '',
-      address: '',
-      hobbies: '',
-      deptYear: ''
-    });
-    setShowAddUserModal(false);
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!window.confirm("Are you sure you want to delete this user profile?")) return;
-
-    if (rtdb) {
-      try {
-        await remove(ref(rtdb, `users/${userId}`));
-        return;
-      } catch (err) {
-        console.warn("RTDB remove user failed, fallback to local storage:", err);
-      }
+    if (!window.confirm('Are you sure you want to delete this user profile?')) return;
+    try {
+      await remove(ref(rtdb, `users/${userId}`));
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      alert('Failed to delete user. Please try again.');
     }
-
-    const updatedUsers = users.filter(u => u.id !== userId);
-    const updatedAttendance = { ...attendance };
-    Object.keys(updatedAttendance).forEach(eId => {
-      if (updatedAttendance[eId]) {
-        delete updatedAttendance[eId][userId];
-      }
-    });
-    setUsers(updatedUsers);
-    setAttendance(updatedAttendance);
-    saveMockDB(updatedUsers, events, updatedAttendance);
   };
 
   const handleUpdateUser = async (updatedUser: UserProfile) => {
-    if (rtdb) {
-      try {
-        const { id, ...profileData } = updatedUser;
-        await set(ref(rtdb, `users/${id}`), profileData);
-        setViewingUser(updatedUser);
-        return;
-      } catch (err) {
-        console.warn("RTDB set user update failed, fallback to local storage:", err);
-      }
+    try {
+      const { id, ...profileData } = updatedUser;
+      await set(ref(rtdb, `users/${id}`), profileData);
+      setViewingUser(updatedUser);
+    } catch (err) {
+      console.error('Failed to update user:', err);
+      alert('Failed to save changes. Please try again.');
     }
-
-    const updatedUsers = users.map(u => u.id === updatedUser.id ? updatedUser : u);
-    setUsers(updatedUsers);
-    saveMockDB(updatedUsers, events, attendance);
-    setViewingUser(updatedUser);
   };
 
-  // Excel / CSV File Parsing
+  // Excel / CSV Import
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -420,34 +238,30 @@ function App() {
       try {
         const bstr = evt.target?.result;
         const workbook = XLSX.read(bstr, { type: 'binary' });
-        const wsname = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[wsname];
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
 
-        // Extract headers
         if (data.length <= 1) {
           alert('Excel file seems to be empty or lacks headers.');
           return;
         }
 
-        const headers = data[0].map(h => String(h).toLowerCase().trim());
-        const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('اسم') || h.includes('الإسم'));
-        const phoneIdx = headers.findIndex(h => h.includes('phone') || h.includes('tel') || h.includes('تليفون') || h.includes('هاتف') || h.includes('التليفون') || h.includes('رقم'));
-        const deptIdx = headers.findIndex(h => h.includes('dept') || h.includes('role') || h.includes('division') || h.includes('فرقة') || h.includes('كلية') || h.includes('قسم') || h.includes('سنة'));
-        const idIdx = headers.findIndex(h => h.includes('id') || h.includes('code') || h.includes('member') || h.includes('كود') || h.includes('مسلسل'));
-        const roleIdx = headers.findIndex(h => h.includes('دور') || h.includes('role') || h.includes('نوع') || h.includes('خادم/مخدوم'));
-
-        // Additional Arabic fields
-        const classYearIdx = headers.findIndex(h => h.includes('الفرقة') || h.includes('class') || h.includes('grade'));
-        const collegeIdx = headers.findIndex(h => h.includes('الكلية') || h.includes('college') || h.includes('faculty'));
-        const sectionIdx = headers.findIndex(h => h.includes('السكشن') || h.includes('section'));
-        const servant1Idx = headers.findIndex(h => h.includes('الخادم المسئول') || h.includes('الخادم المسؤول') || h.includes('الخادم 1'));
-        const servant2Idx = headers.findIndex(h => h.includes('الخادم المسئول2') || h.includes('الخادم المسؤول2') || h.includes('الخادم 2'));
-        const originalChurchIdx = headers.findIndex(h => h.includes('الكنيسة الاصلية') || h.includes('الكنيسة'));
-        const serviceTypeIdx = headers.findIndex(h => h.includes('بيحدم') || h.includes('بيخدم') || h.includes('الخدمة'));
-        const addressIdx = headers.findIndex(h => h.includes('عنوان') || h.includes('العنوان') || h.includes('address') || h.includes('منطقة'));
-        const hobbiesIdx = headers.findIndex(h => h.includes('مواهب') || h.includes('المواهب') || h.includes('هوايات') || h.includes('hobbies'));
-        const deptYearIdx = headers.findIndex(h => h.includes('قسم - السنة') || h.includes('قسم-السنة') || h.includes('قسم/السنة'));
+        const headers = data[0].map((h: any) => String(h).toLowerCase().trim());
+        const nameIdx = headers.findIndex((h: string) => h.includes('name') || h.includes('اسم') || h.includes('الإسم'));
+        const phoneIdx = headers.findIndex((h: string) => h.includes('phone') || h.includes('tel') || h.includes('تليفون') || h.includes('هاتف') || h.includes('التليفون') || h.includes('رقم'));
+        const deptIdx = headers.findIndex((h: string) => h.includes('dept') || h.includes('division') || h.includes('قسم') || h.includes('سنة'));
+        const idIdx = headers.findIndex((h: string) => h.includes('id') || h.includes('code') || h.includes('member') || h.includes('كود') || h.includes('مسلسل'));
+        const roleIdx = headers.findIndex((h: string) => h.includes('دور') || h.includes('نوع') || h.includes('خادم/مخدوم'));
+        const classYearIdx = headers.findIndex((h: string) => h.includes('الفرقة') || h.includes('class') || h.includes('grade'));
+        const collegeIdx = headers.findIndex((h: string) => h.includes('الكلية') || h.includes('college') || h.includes('faculty'));
+        const sectionIdx = headers.findIndex((h: string) => h.includes('السكشن') || h.includes('section'));
+        const servant1Idx = headers.findIndex((h: string) => h.includes('الخادم المسئول') || h.includes('الخادم المسؤول') || h.includes('الخادم 1'));
+        const servant2Idx = headers.findIndex((h: string) => h.includes('الخادم المسئول2') || h.includes('الخادم المسؤول2') || h.includes('الخادم 2'));
+        const originalChurchIdx = headers.findIndex((h: string) => h.includes('الكنيسة الاصلية') || h.includes('الكنيسة'));
+        const serviceTypeIdx = headers.findIndex((h: string) => h.includes('بيحدم') || h.includes('بيخدم') || h.includes('الخدمة'));
+        const addressIdx = headers.findIndex((h: string) => h.includes('عنوان') || h.includes('العنوان') || h.includes('address') || h.includes('منطقة'));
+        const hobbiesIdx = headers.findIndex((h: string) => h.includes('مواهب') || h.includes('المواهب') || h.includes('هوايات') || h.includes('hobbies'));
+        const deptYearIdx = headers.findIndex((h: string) => h.includes('قسم - السنة') || h.includes('قسم-السنة') || h.includes('قسم/السنة'));
 
         if (nameIdx === -1) {
           alert('Excel must contain a column for Name (الإسم).');
@@ -462,9 +276,7 @@ function App() {
           let detectedRole: 'خادم' | 'مخدوم' = 'مخدوم';
           if (roleIdx !== -1 && row[roleIdx]) {
             const val = String(row[roleIdx]).trim();
-            if (val.includes('خادم') || val.toLowerCase() === 'servant') {
-              detectedRole = 'خادم';
-            }
+            if (val.includes('خادم') || val.toLowerCase() === 'servant') detectedRole = 'خادم';
           }
 
           parsedProfiles.push({
@@ -498,52 +310,19 @@ function App() {
   };
 
   const handleConfirmImport = async () => {
-    if (rtdb) {
-      try {
-        for (const user of importedUsersPreview) {
-          const newProfile = {
-            name: user.name,
-            phone: user.phone || 'N/A',
-            department: user.department || 'General',
-            memberId: user.memberId || `MEM-${Math.floor(1000 + Math.random() * 9000)}`,
-            role: user.role || 'مخدوم',
-            classYear: user.classYear || '',
-            college: user.college || '',
-            section: user.section || '',
-            servant1: user.servant1 || '',
-            servant2: user.servant2 || '',
-            originalChurch: user.originalChurch || '',
-            serviceType: user.serviceType || '',
-            address: user.address || '',
-            hobbies: user.hobbies || '',
-            deptYear: user.deptYear || ''
-          };
-          await push(ref(rtdb, 'users'), newProfile);
-        }
-        setImportedUsersPreview([]);
-        setShowImportPreviewModal(false);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
-        return;
-      } catch (err) {
-        console.warn("RTDB batch import failed, falling back to local storage:", err);
+    try {
+      for (const user of importedUsersPreview) {
+        const { id: _id, ...newProfile } = user;
+        await push(ref(rtdb, 'users'), newProfile);
       }
+    } catch (err) {
+      console.error('Batch import failed:', err);
+      alert('Import failed. Please try again.');
+      return;
     }
-
-    const parsedWithRealIds = importedUsersPreview.map((user, idx) => ({
-      ...user,
-      id: `u_excel_${Date.now()}_${idx}`
-    }));
-    const updatedUsers = [...users, ...parsedWithRealIds];
-    setUsers(updatedUsers);
-    saveMockDB(updatedUsers, events, attendance);
-
     setImportedUsersPreview([]);
     setShowImportPreviewModal(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Event Actions
@@ -551,33 +330,17 @@ function App() {
     e.preventDefault();
     if (!eventForm.name || !eventForm.date) return;
 
-    const newEventDetails: Omit<EventItem, 'id'> = {
-      name: eventForm.name,
-      date: eventForm.date,
-      description: eventForm.description || 'No description provided.'
-    };
-
-    let newEventId = '';
-
-    if (rtdb) {
-      try {
-        const newRef = await push(ref(rtdb, 'events'), newEventDetails);
-        newEventId = newRef.key || '';
-      } catch (err) {
-        console.warn("RTDB push event failed, saving to local storage fallback:", err);
-      }
-    }
-
-    if (!newEventId) {
-      newEventId = `e_${Date.now()}`;
-      const newEvent: EventItem = { id: newEventId, ...newEventDetails };
-      const updatedEvents = [...events, newEvent];
-      setEvents(updatedEvents);
-      saveMockDB(users, updatedEvents, attendance);
-    }
-
-    if (newEventId) {
-      setSelectedEventId(newEventId);
+    try {
+      const newRef = await push(ref(rtdb, 'events'), {
+        name: eventForm.name,
+        date: eventForm.date,
+        description: eventForm.description || 'No description provided.'
+      });
+      if (newRef.key) setSelectedEventId(newRef.key);
+    } catch (err) {
+      console.error('Failed to add event:', err);
+      alert('Failed to create event. Please try again.');
+      return;
     }
 
     setEventForm({ name: '', date: '', description: '' });
@@ -593,29 +356,17 @@ function App() {
     }
 
     const currentEventRecord = attendance[selectedEventId] || {};
-    const updatedRecord = {
-      ...currentEventRecord,
-      [userId]: status
-    };
+    const updatedRecord = { ...currentEventRecord, [userId]: status };
 
-    if (rtdb) {
-      try {
-        await set(ref(rtdb, `attendance/${selectedEventId}`), updatedRecord);
-        return;
-      } catch (err) {
-        console.warn("RTDB set attendance failed, saving to local storage:", err);
-      }
+    try {
+      await set(ref(rtdb, `attendance/${selectedEventId}`), updatedRecord);
+    } catch (err) {
+      console.error('Failed to mark attendance:', err);
+      alert('Failed to save attendance. Please try again.');
     }
-
-    const updatedAttendance = {
-      ...attendance,
-      [selectedEventId]: updatedRecord
-    };
-    setAttendance(updatedAttendance);
-    saveMockDB(users, events, updatedAttendance);
   };
 
-  // Export Attendance to CSV
+  // Export to Excel
   const handleExportCSV = () => {
     const currentEvent = events.find(e => e.id === selectedEventId);
     if (!currentEvent) {
@@ -624,60 +375,49 @@ function App() {
     }
 
     const currentRecord = attendance[selectedEventId] || {};
-
-    // Prepare data
-    const exportData = users.map(user => {
-      const status = currentRecord[user.id] || 'Absent';
-      return {
-        'Name': user.name,
-        'Phone': user.phone,
-        'الفرقة': user.classYear || '',
-        'الكلية': user.college || '',
-        'الخادم المسئول': user.servant1 || '',
-        'الخادم المسئول2': user.servant2 || '',
-        'Attendance Status': status
-      };
-    });
+    const exportData = users.map(user => ({
+      'Name': user.name,
+      'Phone': user.phone,
+      'الفرقة': user.classYear || '',
+      'الكلية': user.college || '',
+      'الخادم المسئول': user.servant1 || '',
+      'الخادم المسئول2': user.servant2 || '',
+      'Attendance Status': currentRecord[user.id] || 'Absent'
+    }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
-    Xpath: XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
-
-    // Write and trigger download
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendance');
     XLSX.writeFile(workbook, `${currentEvent.name.replace(/\s+/g, '_')}_Attendance_${currentEvent.date}.xlsx`);
   };
 
-  // Helper Stats calculations
+  // Stats
   const totalUsersCount = users.length;
   const totalEventsCount = events.length;
-
   const currentEventAttendance = selectedEventId ? attendance[selectedEventId] || {} : {};
   const currentEventPresent = Object.values(currentEventAttendance).filter(v => v === 'Present').length;
   const currentEventAbsent = totalUsersCount - currentEventPresent;
-
   const presentServants = users.filter(u => u.role === 'خادم' && currentEventAttendance[u.id] === 'Present').length;
   const totalServants = users.filter(u => u.role === 'خادم').length;
   const absentServants = totalServants - presentServants;
-
   const presentServed = users.filter(u => u.role !== 'خادم' && currentEventAttendance[u.id] === 'Present').length;
   const totalServed = users.filter(u => u.role !== 'خادم').length;
   const absentServed = totalServed - presentServed;
 
-  // Filtered users list based on search and selected filters
+  // Filtered Users
   const filteredUsers = users.filter(u => {
-    const matchesSearch = u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+    const matchesSearch =
+      u.name.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       u.department.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       u.memberId.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
       (u.role && u.role.toLowerCase().includes(userSearchQuery.toLowerCase()));
-
     const matchesCollege = !selectedCollege || u.college === selectedCollege;
     const matchesRole = !selectedRole || u.role === selectedRole;
     const matchesDepartment = !selectedDepartment || u.department === selectedDepartment;
-
     return matchesSearch && matchesCollege && matchesRole && matchesDepartment;
   });
 
-  // Non-logged-in View: Login screen
+  // Login Screen
   if (!currentUser) {
     return (
       <LoginView
@@ -688,15 +428,13 @@ function App() {
         authError={authError}
         authLoading={authLoading}
         handleLogin={handleLogin}
-        isMockMode={isMockMode}
       />
     );
   }
 
-  // Logged-in Dashboard Layout
+  // Dashboard Layout
   return (
     <div className="app-container">
-      {/* Sidebar navigation */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -706,9 +444,7 @@ function App() {
         setIsOpen={setIsSidebarOpen}
       />
 
-      {/* Main dashboard content workspace */}
       <main className="main-content">
-
         <div className="mobile-header">
           <button className="burger-btn" onClick={() => setIsSidebarOpen(true)} aria-label="Open menu">
             <Menu size={24} />
@@ -716,14 +452,6 @@ function App() {
           <span className="mobile-logo-text">SEF_Aftkad</span>
         </div>
 
-        {isMockMode && (
-          <div className="alert-banner alert-banner-info">
-            <AlertTriangle size={20} />
-            <span>Offline Mock Mode enabled. Connect real Firebase using environment variables.</span>
-          </div>
-        )}
-
-        {/* Dashboard View */}
         {activeTab === 'dashboard' && (
           <DashboardView
             totalUsersCount={totalUsersCount}
@@ -744,7 +472,6 @@ function App() {
           />
         )}
 
-        {/* Users View */}
         {activeTab === 'users' && (
           <UsersView
             users={users}
@@ -765,7 +492,6 @@ function App() {
           />
         )}
 
-        {/* Events View */}
         {activeTab === 'events' && (
           <EventsView
             events={events}
@@ -775,7 +501,6 @@ function App() {
           />
         )}
 
-        {/* Attendance View */}
         {activeTab === 'attendance' && (
           <AttendanceView
             events={events}
@@ -789,10 +514,8 @@ function App() {
             markAttendance={markAttendance}
           />
         )}
-
       </main>
 
-      {/* Add User Modal */}
       {showAddUserModal && (
         <AddUserModal
           userForm={userForm}
@@ -802,7 +525,6 @@ function App() {
         />
       )}
 
-      {/* Add Event Modal */}
       {showAddEventModal && (
         <AddEventModal
           eventForm={eventForm}
@@ -812,7 +534,6 @@ function App() {
         />
       )}
 
-      {/* Excel Import Preview Modal */}
       {showImportPreviewModal && (
         <ImportPreviewModal
           importedUsersPreview={importedUsersPreview}
@@ -822,7 +543,6 @@ function App() {
         />
       )}
 
-      {/* View User Details Modal */}
       {viewingUser && (
         <UserDetailsModal
           viewingUser={viewingUser}
@@ -830,7 +550,6 @@ function App() {
           handleUpdateUser={handleUpdateUser}
         />
       )}
-
     </div>
   );
 }

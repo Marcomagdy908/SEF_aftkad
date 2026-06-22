@@ -9,7 +9,6 @@ interface LoginViewProps {
   authError: string;
   authLoading: boolean;
   handleLogin: (e: React.FormEvent) => void;
-  isMockMode: boolean;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({
@@ -20,7 +19,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
   authError,
   authLoading,
   handleLogin,
-  isMockMode,
 }) => {
   return (
     <div className="login-container">
@@ -30,13 +28,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
         </div>
         <h2 className="login-title">SEF_Aftkad_App</h2>
         <p className="login-subtitle">Sign in to manage attendees, events, and track attendance</p>
-
-        {isMockMode && (
-          <div className="alert-banner alert-banner-warning">
-            <AlertTriangle size={20} />
-            <span>Offline Mock Mode enabled. Any credentials will work.</span>
-          </div>
-        )}
 
         {authError && (
           <div className="alert-banner alert-banner-danger" style={{ color: 'var(--danger)', border: '1px solid var(--danger)', backgroundColor: 'rgba(239, 68, 68, 0.05)' }}>
