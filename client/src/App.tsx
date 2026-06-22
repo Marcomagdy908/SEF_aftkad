@@ -115,16 +115,20 @@ function App() {
 
   // Load Auth State
   useEffect(() => {
-    const savedAdminUser = localStorage.getItem('real_admin_user');
-    if (savedAdminUser) {
-      setCurrentUser(JSON.parse(savedAdminUser));
-    } else if (auth) {
+    if (auth) {
+      // Firebase is available — always use it as the source of truth.
+      // Clear any stale localStorage bypass that would skip Firebase Auth.
+      localStorage.removeItem('real_admin_user');
       const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) {
-          setCurrentUser(user);
-        }
+        setCurrentUser(user);
       });
       return unsubscribe;
+    } else {
+      // Firebase not configured — restore the offline bypass session if it exists
+      const savedAdminUser = localStorage.getItem('real_admin_user');
+      if (savedAdminUser) {
+        setCurrentUser(JSON.parse(savedAdminUser));
+      }
     }
   }, []);
 
@@ -246,34 +250,37 @@ function App() {
     setAuthError('');
     setAuthLoading(true);
 
-    // Support admin credentials locally first
-    if (email === 'admin@gmail.com' && password === 'password123') {
-      const adminUser = { email: 'admin@gmail.com' };
-      localStorage.setItem('real_admin_user', JSON.stringify(adminUser));
-      setCurrentUser(adminUser);
-      setAuthLoading(false);
-      return;
-    }
-
     if (auth) {
+      // Always try Firebase Auth first so auth.currentUser is set (required for RTDB writes)
       try {
         await signInWithEmailAndPassword(auth, email, password);
       } catch (err: any) {
-        if ((err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') && email === 'admin@gmail.com' && password === 'password123') {
+        // If the admin user doesn't exist yet, create it automatically
+        if (
+          (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') &&
+          email === 'admin@gmail.com' &&
+          password === 'password123'
+        ) {
           try {
-            // Auto-create admin user in Firebase Auth backend on first attempt
             await createUserWithEmailAndPassword(auth, email, password);
           } catch (createErr: any) {
-            setAuthError(createErr.message || 'Failed to initialize admin credentials on Firebase.');
+            setAuthError(createErr.message || 'Failed to create admin account on Firebase.');
           }
         } else {
-          setAuthError(err.message || 'Failed to sign in. Please check credentials.');
+          setAuthError(err.message || 'Failed to sign in. Please check your credentials.');
         }
       } finally {
         setAuthLoading(false);
       }
     } else {
-      setAuthError('Authentication service is not available.');
+      // Firebase not configured — use local offline bypass only in mock mode
+      if (email === 'admin@gmail.com' && password === 'password123') {
+        const adminUser = { email: 'admin@gmail.com' };
+        localStorage.setItem('real_admin_user', JSON.stringify(adminUser));
+        setCurrentUser(adminUser);
+      } else {
+        setAuthError('Authentication service is not available.');
+      }
       setAuthLoading(false);
     }
   };
